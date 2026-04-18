@@ -1031,8 +1031,8 @@
             // Mobile: painel fixo na parte inferior
             document.getElementById('mobile-popup-title').innerHTML = '📍 ' + nome;
             document.getElementById('mobile-popup-grid').innerHTML = botoesHtml;
-            document.getElementById('mobile-popup').classList.add('ativo');
             map.closePopup();
+            abrirMobilePopup();
           } else {
             let html = `<div class="menu-popup"><div class="popup-title">📍 ${nome}</div><div class="popup-grid">${botoesHtml}</div></div>`;
             L.popup({maxWidth:220, minWidth:180}).setLatLng(e.latlng).setContent(html).openOn(map);
@@ -1171,12 +1171,27 @@
 
 
   // ===== PAINEL MOBILE =====
+  var _paineisMobile = ['.quadro-efetivo', '.filtro', '.painel', '#saveStatus'];
+
+  function abrirMobilePopup() {
+    _paineisMobile.forEach(function(sel) {
+      var el = document.querySelector(sel);
+      if (el) el.style.display = 'none';
+    });
+    document.getElementById('mobile-popup').classList.add('ativo');
+  }
+
   window.fecharMobilePopup = function() {
     document.getElementById('mobile-popup').classList.remove('ativo');
+    _paineisMobile.forEach(function(sel) {
+      var el = document.querySelector(sel);
+      if (el) el.style.display = '';
+    });
   };
+
   // Fecha ao clicar no mapa fora de um município
   map.on('click', function() {
-    document.getElementById('mobile-popup').classList.remove('ativo');
+    fecharMobilePopup();
   });
 
   // ===== FUNÇÕES DE GERENCIAMENTO (MANTIDAS) =====
