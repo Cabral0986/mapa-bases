@@ -1,0 +1,1235 @@
+<!DOCTYPE html>
+  <html>
+  <head>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#000000">
+
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js')
+        .then(reg => console.log('App registrado com sucesso!'))
+        .catch(err => console.log('Falha ao registrar App', err));
+    });
+  }
+</script>
+  <meta charset="utf-8" />
+  <title>CPRAIO - Mapa RAIO CE</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+  <style>
+  body { margin:0; background:#0f172a; font-family:Arial; }
+  #map { height:100vh; }
+
+  /* Estilo para o container de pesquisa e autocomplete */
+  .search-container {
+      position: absolute;
+      top: 10px; /* Alinhando com o header, mas ligeiramente abaixo ou ao lado */
+      left: 10px;
+      background:#111827;
+      padding: 12px;
+      border-radius: 12px;
+      color:#fff;
+      z-index: 1050; /* Garantindo que fique sobre o mapa */
+  }
+
+  #municipioSearch {
+      width: 250px;
+      padding: 8px;
+      border-radius: 5px;
+      border: none;
+      background-color: #374151; /* Cor de fundo escura, como o painel */
+      color: white;
+  }
+
+  /* O container para as sugestões (autocomplete) */
+  .suggestions {
+      position: absolute;
+      top: 100%; /* Posiciona abaixo do campo de busca */
+      left: 0;
+      right: 0;
+      background-color: #2d3748; /* Cor mais escura para o dropdown */
+      border-radius: 5px;
+      max-height: 200px;
+      overflow-y: auto;
+      z-index: 1050;
+  }
+
+  .suggestions div {
+      padding: 8px 12px;
+      cursor: pointer;
+      border-bottom: 1px solid #3f4d60;
+  }
+  .suggestions div:hover {
+      background-color: #3e5067; /* Efeito hover */
+  }
+
+  /* Ajustando o posicionamento dos filtros para abrir espaço */
+  .filtro {
+    position:absolute;
+    top:90px;
+    right:10px;
+    background:#111827;
+    padding:10px;
+    border-radius:10px;
+    color:#fff;
+    z-index:1000;
+  }
+
+  .header {
+    position:absolute;
+    top:10px;
+    left:50%;
+    transform:translateX(-50%);
+    background:#111827;
+    padding:10px 20px;
+    border-radius:12px;
+    color:#fff;
+    z-index:1000;
+    display:flex;
+    align-items:center;
+    gap:14px;
+    white-space:nowrap;
+  }
+  .header img {
+    height:55px;
+    width:auto;
+  }
+  .header-text {
+    text-align:center;
+    line-height:1.4;
+  }
+
+  .painel {
+    position:absolute;
+    top:225px;
+    right:10px;
+    background:#111827;
+    padding:10px;
+    border-radius:10px;
+    color:#fff;
+    z-index:1000;
+  }
+
+  .quadro-efetivo {
+    position:absolute;
+    top:285px;
+    right:10px;
+    background:#111827;
+    padding:12px 14px;
+    border-radius:10px;
+    color:#fff;
+    z-index:1000;
+    min-width:160px;
+  }
+  .quadro-efetivo b {
+    display:block;
+    margin-bottom:8px;
+    font-size:13px;
+    color:#93c5fd;
+    border-bottom:1px solid #1e3a5f;
+    padding-bottom:5px;
+  }
+  .efetivo-linha {
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin:5px 0;
+    font-size:13px;
+  }
+  .efetivo-linha span.label-item {
+    color:#cbd5e1;
+  }
+  .efetivo-valor {
+    font-weight:bold;
+    font-size:15px;
+    color:#fff;
+    background:#1e293b;
+    border:1px solid #334155;
+    border-radius:5px;
+    padding:2px 8px;
+    min-width:44px;
+    text-align:center;
+    cursor:pointer;
+    outline:none;
+    width:55px;
+  }
+  .efetivo-valor:focus {
+    border-color:#3b82f6;
+    background:#1e3a5f;
+  }
+  /* Labels do split Fortaleza */
+  .label-split {
+    font-size:13px;
+    font-weight:bold;
+    color:#fff;
+    text-shadow:0 0 4px #000, 0 0 8px #000;
+    background:rgba(0,0,0,0.45);
+    padding:3px 8px;
+    border-radius:5px;
+    white-space:nowrap;
+    pointer-events:none;
+  }
+
+  /* Remove setas do input number */
+  .efetivo-valor::-webkit-inner-spin-button,
+  .efetivo-valor::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
+  .efetivo-valor { -moz-appearance:textfield; }
+
+  /* ===== POPUP LEAFLET — TEMA ESCURO ===== */
+  .leaflet-popup-content-wrapper {
+    background:#1e293b !important;
+    border:1px solid #334155 !important;
+    border-radius:10px !important;
+    box-shadow:0 4px 20px rgba(0,0,0,0.5) !important;
+    padding:0 !important;
+  }
+  .leaflet-popup-content {
+    margin:0 !important;
+    min-width:0 !important;
+  }
+  .leaflet-popup-tip {
+    background:#1e293b !important;
+  }
+  .leaflet-popup-close-button {
+    color:#94a3b8 !important;
+    font-size:16px !important;
+    top:6px !important;
+    right:8px !important;
+  }
+  .leaflet-popup-close-button:hover { color:#fff !important; }
+
+  /* ===== MENU POPUP COMPACTO ===== */
+  .menu-popup {
+    padding:12px 14px 14px;
+    min-width:180px;
+  }
+  .menu-popup .popup-title {
+    font-size:13px;
+    font-weight:bold;
+    color:#93c5fd;
+    margin-bottom:10px;
+    padding-bottom:7px;
+    border-bottom:1px solid #334155;
+    white-space:nowrap;
+  }
+  .menu-popup .popup-grid {
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:6px;
+  }
+  .menu-popup .popup-grid button {
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:3px;
+    padding:8px 4px;
+    border:none;
+    border-radius:7px;
+    cursor:pointer;
+    font-size:10px;
+    font-weight:600;
+    color:#fff;
+    background:#1d4ed8;
+    transition:filter .15s;
+    line-height:1.2;
+  }
+  .menu-popup .popup-grid button:hover { filter:brightness(1.2); }
+  .menu-popup .popup-grid button .ico { font-size:16px; }
+  .menu-popup .popup-grid .btn-futura  { background:#0e7490; }
+  .menu-popup .popup-grid .btn-impl    { background:#15803d; }
+  .menu-popup .popup-grid .btn-edit    { background:#1d4ed8; }
+  .menu-popup .popup-grid .btn-limpar  { background:#991b1b; }
+
+  .btn-cloud {
+    position: absolute;
+    bottom: 75px;
+    left: 10px;
+    background: #065f46;
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 10px 18px;
+    font-size: 14px;
+    cursor: pointer;
+    z-index: 1000;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  }
+  .btn-cloud:hover { background: #047857; }
+  .btn-cloud.salvando { background: #92400e; cursor: wait; }
+
+  #saveStatus {
+    position: absolute;
+    bottom: 120px;
+    left: 10px;
+    background: #111827;
+    color: #94a3b8;
+    font-size: 11px;
+    padding: 5px 10px;
+    border-radius: 8px;
+    z-index: 1000;
+    display: none;
+    max-width: 200px;
+  }
+
+  .btn-print {
+    position: absolute;
+    bottom: 30px;
+    left: 10px;
+    background: #1e40af;
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 10px 18px;
+    font-size: 14px;
+    cursor: pointer;
+    z-index: 1000;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  }
+  .btn-print:hover { background: #2563eb; }
+
+  /* ===== MODAL DE EDIÇÃO ===== */
+  .modal-overlay {
+    display:none;
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,0.65);
+    z-index:3000;
+    align-items:center;
+    justify-content:center;
+  }
+  .modal-overlay.ativo { display:flex; }
+  .modal-box {
+    background:#1e293b;
+    border:1px solid #334155;
+    border-radius:14px;
+    padding:24px 28px;
+    min-width:320px;
+    color:#fff;
+    box-shadow:0 8px 32px rgba(0,0,0,0.5);
+  }
+  .modal-box h3 {
+    margin:0 0 16px;
+    font-size:16px;
+    color:#93c5fd;
+    border-bottom:1px solid #334155;
+    padding-bottom:10px;
+  }
+  .modal-campo {
+    display:flex;
+    flex-direction:column;
+    margin-bottom:12px;
+  }
+  .modal-campo label {
+    font-size:11px;
+    color:#94a3b8;
+    margin-bottom:4px;
+    text-transform:uppercase;
+    letter-spacing:.5px;
+  }
+  .modal-campo input, .modal-campo select {
+    background:#0f172a;
+    border:1px solid #334155;
+    border-radius:6px;
+    color:#fff;
+    padding:7px 10px;
+    font-size:13px;
+    outline:none;
+  }
+  .modal-campo input:focus, .modal-campo select:focus { border-color:#3b82f6; }
+  .modal-campo select option { background:#1e293b; }
+  .modal-btns {
+    display:flex;
+    gap:8px;
+    margin-top:18px;
+  }
+  .modal-btns button {
+    flex:1;
+    padding:8px;
+    border:none;
+    border-radius:7px;
+    cursor:pointer;
+    font-size:13px;
+    font-weight:bold;
+  }
+  .btn-salvar { background:#2563eb; color:#fff; }
+  .btn-salvar:hover { background:#1d4ed8; }
+  .btn-cancelar { background:#374151; color:#fff; }
+  .btn-cancelar:hover { background:#4b5563; }
+
+  @page { margin: 0; }
+
+  @media print {
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    html, body { margin: 0 !important; padding: 0 !important; width: 100% !important; height: 100% !important; background: #fff !important; }
+    .header, .search-container, .filtro, .painel, .btn-print,
+    .leaflet-control-container { display: none !important; }
+    #map {
+      position: fixed !important;
+      top: 0 !important; left: 0 !important;
+      width: 100vw !important; height: 100vh !important;
+      margin: 0 !important; padding: 0 !important;
+      z-index: 0 !important;
+    }
+    .leaflet-container {
+      width: 100vw !important;
+      height: 100vh !important;
+    }
+  }
+
+  .label {
+    font-size: var(--label-size, 3px);
+    font-weight:bold;
+    color:#fff;
+    text-shadow:1px 1px 3px #000;
+    pointer-events:none;
+    white-space: nowrap;
+    transition: font-size 0.2s ease;
+  }
+  </style>
+  </head>
+
+  <body >
+
+  <div class="header">
+    <img src="https://upload.wikimedia.org/wikipedia/commons/6/66/LogoRaio.png" alt="Logo CPRAIO">
+    <div class="header-text">
+      <b>CPRAIO - PMCE</b><br>
+      Mapa Interativo RAIO
+    </div>
+    <img src="https://upload.wikimedia.org/wikipedia/commons/b/b3/Bras%C3%A3o_da_Pol%C3%ADcia_Militar_do_Estado_do_Cear%C3%A1.png" alt="Brasão PMCE">
+  </div>
+
+  <!-- Container de Pesquisa -->
+  <div class="search-container">
+      <b>Buscar Município</b><br>
+      <input type="text" id="municipioSearch" placeholder="Digite o nome do município...">
+      <div id="autocompleteSuggestions" class="suggestions" style="display:none;"></div>
+  </div>
+
+  <div class="filtro">
+    <b>Filtro</b><br>
+    <input type="checkbox" id="chkImplantadas" checked> Implantadas<br>
+    <input type="checkbox" id="chkFuturas" checked> Futuras<br>
+    <input type="checkbox" id="chkSemBase" checked> Sem base<br>
+    <input type="checkbox" id="chkLegenda" checked> Legenda
+  </div >
+
+  <div class="painel" id="painelInfo"></div>
+
+  <div id="saveStatus"></div>
+  <button class="btn-cloud" id="btnCloud" onclick="salvarNuvem()">☁️ Salvar Online</button>
+  <button class="btn-print" onclick="imprimirMapa()">🖨️ Imprimir Mapa</button>
+
+  <div class="quadro-efetivo">
+    <b>Efetivo RAIO</b>
+    <div class="efetivo-linha">
+      <span class="label-item">👮 Policiais</span>
+      <input class="efetivo-valor" id="qtdPoliciais" type="number" min="0" value="0">
+    </div>
+    <div class="efetivo-linha">
+      <span class="label-item">🏍️ Motos</span>
+      <input class="efetivo-valor" id="qtdMotos" type="number" min="0" value="0">
+    </div>
+    <div class="efetivo-linha">
+      <span class="label-item">🚔 Viaturas</span>
+      <input class="efetivo-valor" id="qtdViaturas" type="number" min="0" value="0">
+    </div>
+  </div>
+
+  <!-- Modal de Edição -->
+  <div class="modal-overlay" id="modalEdicao">
+    <div class="modal-box">
+      <h3>✏️ Editar Base — <span id="modalNome"></span></h3>
+      <div class="modal-campo">
+        <label>Batalhão</label>
+        <select id="editBat">
+          <option>1ºBPRaio</option><option>2ºBPRaio</option>
+          <option>3ºBPRaio</option><option>4ºBPRaio</option>
+          <option>5ºBPRaio</option>
+        </select>
+      </div>
+      <div class="modal-campo">
+        <label>Companhia</label>
+        <select id="editCia">
+          <option>1ªCia</option><option>2ªCia</option><option>3ªCia</option>
+          <option>4ªCia</option><option>5ªCia</option>
+        </select>
+      </div>
+      <div class="modal-campo">
+        <label>Pelotão (deixe em branco se for sede de Cia)</label>
+        <select id="editPel">
+          <option value="">— Sede de Cia —</option>
+          <option>1ºPel</option><option>2ºPel</option><option>3ºPel</option>
+          <option>4ºPel</option><option>5ºPel</option><option>6ºPel</option>
+          <option>7ºPel</option>
+        </select>
+      </div>
+      <div class="modal-campo">
+        <label>Ordem de implantação</label>
+        <input type="number" id="editOrdem" min="1">
+      </div>
+      <div class="modal-campo">
+        <label>Data de inauguração (dd/mm/aaaa)</label>
+        <input type="text" id="editData" placeholder="Ex: 23/07/2016">
+      </div>
+      <div class="modal-btns">
+        <button class="btn-cancelar" onclick="fecharModal()">Cancelar</button>
+        <button class="btn-salvar" onclick="salvarEdicao()">💾 Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="map"></div >
+
+  <script>
+
+  // ===== MAPA =====
+  var map = L.map('map').setView([-5.2, -39.5], 7);
+
+  // ===== ORGANOGRAMA CPRAIO =====
+  var orgInfo = {
+    // 1º BPRaio
+    "Fortaleza":               {bat:"1ºBPRaio",cia:"1ªCia",pel:null},
+    "Messejana":               {bat:"1ºBPRaio",cia:"1ªCia",pel:"1ºPel"},
+    // 2º BPRaio
+    "Caucaia":                 {bat:"2ºBPRaio",cia:"1ªCia",pel:null},
+    "São Gonçalo do Amarante": {bat:"2ºBPRaio",cia:"1ªCia",pel:"1ºPel"},
+    "Trairi":                  {bat:"2ºBPRaio",cia:"1ªCia",pel:"2ºPel"},
+    "Paracuru":                {bat:"2ºBPRaio",cia:"1ªCia",pel:"3ºPel"},
+    "Paraipaba":               {bat:"2ºBPRaio",cia:"1ªCia",pel:"4ºPel"},
+    "Maracanaú":               {bat:"2ºBPRaio",cia:"2ªCia",pel:null},
+    "Maranguape":              {bat:"2ºBPRaio",cia:"2ªCia",pel:"1ºPel"},
+    "Pacatuba":                {bat:"2ºBPRaio",cia:"2ªCia",pel:"2ºPel"},
+    "Guaiuba":                 {bat:"2ºBPRaio",cia:"2ªCia",pel:"3ºPel"},
+    "Eusébio":                 {bat:"2ºBPRaio",cia:"3ªCia",pel:null},
+    "Aquiraz":                 {bat:"2ºBPRaio",cia:"3ªCia",pel:"1ºPel"},
+    "Cascavel":                {bat:"2ºBPRaio",cia:"3ªCia",pel:"2ºPel"},
+    "Horizonte":               {bat:"2ºBPRaio",cia:"4ªCia",pel:null},
+    "Pacajus":                 {bat:"2ºBPRaio",cia:"4ªCia",pel:"1ºPel"},
+    "Itaitinga":               {bat:"2ºBPRaio",cia:"4ªCia",pel:"2ºPel"},
+    "Chorozinho":              {bat:"2ºBPRaio",cia:"4ªCia",pel:"3ºPel"},
+    // 3º BPRaio
+    "Russas":                  {bat:"3ºBPRaio",cia:"1ªCia",pel:null},
+    "Limoeiro do Norte":       {bat:"3ºBPRaio",cia:"1ªCia",pel:"1ºPel"},
+    "Morada Nova":             {bat:"3ºBPRaio",cia:"1ªCia",pel:"2ºPel"},
+    "Jaguaribe":               {bat:"3ºBPRaio",cia:"1ªCia",pel:"3ºPel"},
+    "Tabuleiro do Norte":      {bat:"3ºBPRaio",cia:"1ªCia",pel:"4ºPel"},
+    "Aracati":                 {bat:"3ºBPRaio",cia:"2ªCia",pel:null},
+    "Beberibe":                {bat:"3ºBPRaio",cia:"2ªCia",pel:"1ºPel"},
+    "Jaguaruana":              {bat:"3ºBPRaio",cia:"2ªCia",pel:"2ºPel"},
+    "Icapuí":                  {bat:"3ºBPRaio",cia:"2ªCia",pel:"3ºPel"},
+    "Quixadá":                 {bat:"3ºBPRaio",cia:"3ªCia",pel:null},
+    "Quixeramobim":            {bat:"3ºBPRaio",cia:"3ªCia",pel:"1ºPel"},
+    "Baturité":                {bat:"3ºBPRaio",cia:"3ªCia",pel:"2ºPel"},
+    "Boa Viagem":              {bat:"3ºBPRaio",cia:"3ªCia",pel:"3ºPel"},
+    "Pedra Branca":            {bat:"3ºBPRaio",cia:"3ªCia",pel:"4ºPel"},
+    "Ocara":                   {bat:"3ºBPRaio",cia:"3ªCia",pel:"5ºPel"},
+    "Aracoiaba":               {bat:"3ºBPRaio",cia:"3ªCia",pel:"6ºPel"},
+    // 4º BPRaio
+    "Sobral":                  {bat:"4ºBPRaio",cia:"1ªCia",pel:null},
+    "Massapê":                 {bat:"4ºBPRaio",cia:"1ªCia",pel:"1ºPel"},
+    "Santana do Acaraú":       {bat:"4ºBPRaio",cia:"1ªCia",pel:"2ºPel"},
+    "Forquilha":               {bat:"4ºBPRaio",cia:"1ªCia",pel:"3ºPel"},
+    "Tianguá":                 {bat:"4ºBPRaio",cia:"2ªCia",pel:null},
+    "Viçosa do Ceará":         {bat:"4ºBPRaio",cia:"2ªCia",pel:"1ºPel"},
+    "São Benedito":            {bat:"4ºBPRaio",cia:"2ªCia",pel:"2ºPel"},
+    "Guaraciaba do Norte":     {bat:"4ºBPRaio",cia:"2ªCia",pel:"3ºPel"},
+    "Ipu":                     {bat:"4ºBPRaio",cia:"2ªCia",pel:"4ºPel"},
+    "Ubajara":                 {bat:"4ºBPRaio",cia:"2ªCia",pel:"5ºPel"},
+    "Ibiapina":                {bat:"4ºBPRaio",cia:"2ªCia",pel:"6ºPel"},
+    "Canindé":                 {bat:"4ºBPRaio",cia:"3ªCia",pel:null},
+    "Santa Quitéria":          {bat:"4ºBPRaio",cia:"3ªCia",pel:"1ºPel"},
+    "Camocim":                 {bat:"4ºBPRaio",cia:"4ªCia",pel:null},
+    "Granja":                  {bat:"4ºBPRaio",cia:"4ªCia",pel:"1ºPel"},
+    "Bela Cruz":               {bat:"4ºBPRaio",cia:"4ªCia",pel:"2ºPel"},
+    "Marco":                   {bat:"4ºBPRaio",cia:"4ªCia",pel:"3ºPel"},
+    "Itapipoca":               {bat:"4ºBPRaio",cia:"5ªCia",pel:null},
+    "Itapajé":                 {bat:"4ºBPRaio",cia:"5ªCia",pel:"1ºPel"},
+    "Acaraú":                  {bat:"4ºBPRaio",cia:"5ªCia",pel:"2ºPel"},
+    "Itarema":                 {bat:"4ºBPRaio",cia:"5ªCia",pel:"3ºPel"},
+    "Amontada":                {bat:"4ºBPRaio",cia:"5ªCia",pel:"4ºPel"},
+    "Pentecoste":              {bat:"4ºBPRaio",cia:"5ªCia",pel:"5ºPel"},
+    // 5º BPRaio
+    "Juazeiro do Norte":       {bat:"5ºBPRaio",cia:"1ªCia",pel:null},
+    "Crato":                   {bat:"5ºBPRaio",cia:"1ªCia",pel:"1ºPel"},
+    "Barbalha":                {bat:"5ºBPRaio",cia:"1ªCia",pel:"2ºPel"},
+    "Lavras da Mangabeira":    {bat:"5ºBPRaio",cia:"1ªCia",pel:"3ºPel"},
+    "Aurora":                  {bat:"5ºBPRaio",cia:"1ªCia",pel:"4ºPel"},
+    "Missão Velha":            {bat:"5ºBPRaio",cia:"1ªCia",pel:"5ºPel"},
+    "Campos Sales":            {bat:"5ºBPRaio",cia:"1ªCia",pel:"6ºPel"},
+    "Caririaçu":               {bat:"5ºBPRaio",cia:"1ªCia",pel:"7ºPel"},
+    "Iguatu":                  {bat:"5ºBPRaio",cia:"2ªCia",pel:null},
+    "Acopiara":                {bat:"5ºBPRaio",cia:"2ªCia",pel:"1ºPel"},
+    "Icó":                     {bat:"5ºBPRaio",cia:"2ªCia",pel:"2ºPel"},
+    "Várzea Alegre":           {bat:"5ºBPRaio",cia:"2ªCia",pel:"3ºPel"},
+    "Cedro":                   {bat:"5ºBPRaio",cia:"2ªCia",pel:"4ºPel"},
+    "Tauá":                    {bat:"5ºBPRaio",cia:"3ªCia",pel:null},
+    "Parambu":                 {bat:"5ºBPRaio",cia:"3ªCia",pel:"1ºPel"},
+    "Mombaça":                 {bat:"5ºBPRaio",cia:"3ªCia",pel:"2ºPel"},
+    "Crateús":                 {bat:"5ºBPRaio",cia:"4ªCia",pel:null},
+    "Tamboril":                {bat:"5ºBPRaio",cia:"4ªCia",pel:"1ºPel"},
+    "Nova Russas":             {bat:"5ºBPRaio",cia:"4ªCia",pel:"2ºPel"},
+    "Novo Oriente":            {bat:"5ºBPRaio",cia:"4ªCia",pel:"3ºPel"},
+    "Ipueiras":                {bat:"5ºBPRaio",cia:"4ªCia",pel:"4ºPel"},
+    "Brejo Santo":             {bat:"5ºBPRaio",cia:"5ªCia",pel:null},
+    "Mauriti":                 {bat:"5ºBPRaio",cia:"5ªCia",pel:"1ºPel"},
+    "Jardim":                  {bat:"5ºBPRaio",cia:"5ªCia",pel:"2ºPel"}
+  };
+
+  function getOrgStr(nome) {
+    var o = orgInfo[nome];
+    if (!o) return '';
+    return o.pel ? `${o.pel}/${o.cia}/${o.bat}` : `${o.cia}/${o.bat}`;
+  }
+
+  // ===== TAMANHO DOS LABELS POR ZOOM =====
+  function updateLabelSizes() {
+    var zoom = map.getZoom();
+    // zoom 6 = 0px (invisível), zoom 7 = 3px, zoom 8 = 6px, zoom 9 = 9px, zoom 10 = 12px
+    var size = Math.max(0, (zoom - 6) * 3);
+    document.documentElement.style.setProperty('--label-size', size + 'px');
+  }
+
+  map.on('zoomend', updateLabelSizes);
+  updateLabelSizes(); // aplica ao carregar
+
+  // ===== CONTROLE DE LABEL =====
+  var mostrarLabels = true;
+
+  // Lista de todos os municípios para busca
+  var allMunicipalities = {};
+
+  // ===== BASES COMPLETAS =====
+  var raio = {
+  "Fortaleza": {ord:1,data:"12/03/2004"},
+  "Juazeiro do Norte": {ord:2,data:"10/07/2015"},
+  "Sobral": {ord:3,data:"24/10/2015"},
+  "Russas": {ord:4,data:"16/07/2016"},
+  "Quixadá": {ord:5,data:"23/07/2016"},
+  "Iguatu": {ord:6,data:"20/08/2016"},
+  "Itapipoca": {ord:7,data:"02/09/2016"},
+  "Crateús": {ord:8,data:"16/09/2016"},
+  "Tauá": {ord:9,data:"18/02/2017"},
+  "Canindé": {ord:10,data:"12/05/2017"},
+  "Maracanaú": {ord:11,data:"23/09/2017"},
+  "Caucaia": {ord:12,data:"30/09/2017"},
+  "Maranguape": {ord:13,data:"18/11/2017"},
+  "Crato": {ord:14,data:"23/12/2017"},
+  "Eusébio": {ord:15,data:"26/12/2017"},
+  "Acaraú": {ord:16,data:"29/12/2017"},
+  "Aracati": {ord:17,data:"31/01/2018"},
+  "Beberibe": {ord:18,data:"24/02/2018"},
+  "Horizonte": {ord:19,data:"16/03/2018"},
+  "Aquiraz": {ord:20,data:"27/03/2018"},
+  "Cascavel": {ord:21,data:"07/04/2018"},
+  "Morada Nova": {ord:22,data:"20/04/2018"},
+  "Limoeiro do Norte": {ord:23,data:"04/05/2018"},
+  "Quixeramobim": {ord:24,data:"12/05/2018"},
+  "Icó": {ord:25,data:"26/05/2018"},
+  "Mombaça": {ord:26,data:"04/06/2018"},
+  "Granja": {ord:27,data:"09/06/2018"},
+  "São Benedito": {ord:28,data:"16/06/2018"},
+  "Camocim": {ord:29,data:"19/06/2018"},
+  "Brejo Santo": {ord:30,data:"22/06/2018"},
+  "Pacajus": {ord:31,data:"23/06/2018"},
+  "Pacatuba": {ord:32,data:"25/06/2018"},
+  "Santa Quitéria": {ord:33,data:"26/06/2018"},
+  "Baturité": {ord:34,data:"30/06/2018"},
+  "Tianguá": {ord:35,data:"01/07/2018"},
+  "Barbalha": {ord:36,data:"04/07/2018"},
+  "Itapajé": {ord:37,data:"21/07/2018"},
+  "Boa Viagem": {ord:38,data:"14/09/2018"},
+  "Parambu": {ord:39,data:"27/09/2018"},
+  "São Gonçalo do Amarante": {ord:40,data:"28/09/2018"},
+  "Lavras da Mangabeira": {ord:41,data:"29/09/2018"},
+  "Viçosa do Ceará": {ord:42,data:"23/03/2019"},
+  "Trairi": {ord:43,data:"13/04/2019"},
+  "Acopiara": {ord:44,data:"08/08/2019"},
+  "Itarema": {ord:45,data:"15/04/2020"},
+  "Jaguaribe": {ord:46,data:"11/11/2020"},
+  "Itaitinga": {ord:47,data:"26/07/2021"},
+  "Paracuru": {ord:48,data:"02/09/2021"},
+  "Mauriti": {ord:49,data:"20/09/2021"},
+  "Várzea Alegre": {ord:50,data:"07/10/2021"},
+  "Guaraciaba do Norte": {ord:51,data:"25/10/2021"},
+  "Ipu": {ord:52,data:"16/11/2021"},
+  "Amontada": {ord:53,data:"04/02/2022"},
+  "Ubajara": {ord:54,data:"22/02/2022"},
+  "Paraipaba": {ord:55,data:"25/02/2022"},
+  "Massapê": {ord:56,data:"03/03/2022"},
+  "Bela Cruz": {ord:57,data:"05/03/2022"},
+  "Jaguaruana": {ord:58,data:"10/03/2022"},
+  "Pedra Branca": {ord:59,data:"18/03/2022"},
+  "Aurora": {ord:60,data:"27/03/2022"},
+  "Icapuí": {ord:61,data:"29/03/2022"},
+  "Santana do Acaraú": {ord:62,data:"07/04/2022"},
+  "Ipueiras": {ord:63,data:"20/04/2022"},
+  "Missão Velha": {ord:64,data:"30/05/2022"},
+  "Jardim": {ord:65,data:"14/06/2022"},
+  "Pentecoste": {ord:66,data:"23/06/2022"},
+  "Tabuleiro do Norte": {ord:67,data:"13/09/2022"},
+  "Tamboril": {ord:68,data:"23/09/2022"},
+  "Messejana": {ord:69,data:"20/10/2022"},
+  "Nova Russas": {ord:70,data:"23/02/2023"},
+  "Chorozinho": {ord:71,data:"28/02/2023"},
+  "Campos Sales": {ord:72,data:"04/04/2023"},
+  "Ibiapina": {ord:73,data:"04/05/2023"},
+  "Novo Oriente": {ord:74,data:"20/05/2023"},
+  "Forquilha": {ord:75,data:"03/08/2023"},"Marco": {ord:76,data:"27/12/2023"},
+  "Caririaçu": {ord:77,data:"18/12/2024"},
+  "Guaiuba": {ord:78,data:"21/03/2025"},
+  "Ocara": {ord:79,data:"11/07/2025"},
+  "Cedro": {ord:80,data:"20/10/2025"},
+  "Aracoiaba": {ord:81,data:"06/03/2026"}
+  };
+
+  var futuras = ["Redenção","Milagres","Independência","Senador Pompeu","Cruz"];
+
+
+  // Inicializa com TODOS os municípios do GeoJSON (não só raio/futuras)
+  function initializeAllMunicipalities() {
+      geoData.features.forEach(f => {
+          allMunicipalities[f.properties.name] = true;
+      });
+  }
+
+
+  // ===== CENTROIDE REAL DO POLÍGONO =====
+  function getCentroid(feature) {
+    var coords;
+    var geom = feature.geometry;
+    if (geom.type === "MultiPolygon") {
+      // Usa o maior polígono
+      var maxArea = 0, best = null;
+      geom.coordinates.forEach(function(poly) {
+        var ring = poly[0], area = 0;
+        for (var i = 0; i < ring.length - 1; i++) {
+          area += ring[i][0] * ring[i+1][1] - ring[i+1][0] * ring[i][1];
+        }
+        area = Math.abs(area);
+        if (area > maxArea) { maxArea = area; best = ring; }
+      });
+      coords = best;
+    } else {
+      coords = geom.coordinates[0];
+    }
+    var cx = 0, cy = 0, a = 0;
+    for (var i = 0; i < coords.length - 1; i++) {
+      var x0 = coords[i][0], y0 = coords[i][1];
+      var x1 = coords[i+1][0], y1 = coords[i+1][1];
+      var cross = x0 * y1 - x1 * y0;
+      cx += (x0 + x1) * cross;
+      cy += (y0 + y1) * cross;
+      a += cross;
+    }
+    a *= 0.5;
+    cx /= (6 * a);
+    cy /= (6 * a);
+    return L.latLng(cy, cx);
+  }
+
+  // ===== COR =====
+  function getCor(nome){
+    if(raio[nome]) return "#005eff";
+    if(futuras.includes(nome)) return "#00d4ff";
+    return "#374151";
+  }
+
+  var geojsonLayer, geoData;
+  var layerMap = {};
+  var highlightedLayer = null;
+  var fortalezaHalves = null;
+  var splitOverlay = null;
+  var labelLayer = L.layerGroup().addTo(map); // camada exclusiva dos labels
+
+  // Divide o polígono de Fortaleza em norte (Sede) e sul (Messejana)
+  function computeFortalezaHalves(feature) {
+    var geom = feature.geometry;
+    var ring = (geom.type === 'MultiPolygon') ? geom.coordinates[0][0] : geom.coordinates[0];
+
+    // Latitude média como linha de corte
+    var sumLat = 0;
+    ring.forEach(function(p){ sumLat += p[1]; });
+    var splitLat = sumLat / ring.length;
+
+    var north = [], south = [];
+    for (var i = 0; i < ring.length - 1; i++) {
+      var lng0=ring[i][0], lat0=ring[i][1];
+      var lng1=ring[i+1][0], lat1=ring[i+1][1];
+      if (lat0 >= splitLat) north.push([lat0, lng0]);
+      else                  south.push([lat0, lng0]);
+      // Ponto de interseção com a linha de corte
+      if ((lat0 >= splitLat) !== (lat1 >= splitLat)) {
+        var t = (splitLat - lat0) / (lat1 - lat0);
+        var lngI = lng0 + t * (lng1 - lng0);
+        north.push([splitLat, lngI]);
+        south.push([splitLat, lngI]);
+      }
+    }
+    return { north: north, south: south };
+  }
+
+  // Centroide simples (média) de um array [[lat,lng],...]
+  function halfCentroid(pts) {
+    var lat=0, lng=0;
+    pts.forEach(function(p){ lat+=p[0]; lng+=p[1]; });
+    return [lat/pts.length, lng/pts.length];
+  }
+
+
+  // ===== FUNÇÕES DE AUTOCOMPLETE (NOVO) =====
+
+  /**
+   * Filtra e exibe as sugestões de nomes na caixa de autocomplete.
+   * @param {Event} e - O evento de digitação.
+   */
+  function handleAutocomplete(e) {
+      const query = e.target.value.toLowerCase().trim();
+      const suggestionsContainer = document.getElementById('autocompleteSuggestions');
+      suggestionsContainer.innerHTML = '';
+
+      if (query.length === 0) {
+          suggestionsContainer.style.display = 'none';
+          return;
+      }
+
+      // Prioriza nomes que COMEÇAM com a query, depois os que apenas CONTÊM
+      let startsWith = [], contains = [];
+      for (const name in allMunicipalities) {
+          const lower = name.toLowerCase();
+          if (lower.startsWith(query)) startsWith.push(name);
+          else if (lower.includes(query)) contains.push(name);
+      }
+      startsWith.sort();
+      contains.sort();
+      const matches = [...startsWith, ...contains];
+
+      if (matches.length > 0) {
+          suggestionsContainer.style.display = 'block';
+          matches.forEach(match => {
+              const div = document.createElement('div');
+              div.textContent = match;
+              div.addEventListener('click', () => selectMunicipality(match));
+              suggestionsContainer.appendChild(div);
+          });
+      } else {
+          suggestionsContainer.style.display = 'none';
+      }
+  }
+
+  /**
+   * Seleciona um município da lista de sugestões, preenchendo o campo e chamando a lógica principal.      
+   * @param {string} name - Nome do município selecionado.
+   */
+  function selectMunicipality(name) {
+      document.getElementById('municipioSearch').value = name;
+      document.getElementById('autocompleteSuggestions').style.display = 'none';
+
+      const layer = layerMap[name];
+      if (!layer) return;
+
+      // Remove destaque anterior
+      if (highlightedLayer) {
+          geojsonLayer.resetStyle(highlightedLayer);
+          highlightedLayer = null;
+      }
+
+      // Zoom no município
+      map.fitBounds(layer.getBounds(), { padding: [40, 40] });
+
+      // Destaque visual (borda laranja)
+      layer.setStyle({ weight: 4, color: '#ff6600', fillOpacity: 0.95 });
+      highlightedLayer = layer;
+
+      // Mostra tooltip fixo
+      layer.openTooltip(layer.getBounds().getCenter());
+  }
+
+
+  // ===== ATUALIZA MAPA (MANTIDO E MELHORADO) =====
+  window.atualizarMapa = function(){
+
+    mostrarLabels = document.getElementById("chkLegenda").checked;
+
+    if(geojsonLayer) map.removeLayer(geojsonLayer);
+    if(splitOverlay) { map.removeLayer(splitOverlay); splitOverlay = null; }
+    labelLayer.clearLayers(); // remove todos os labels anteriores
+    layerMap = {};
+    highlightedLayer = null;
+
+    geojsonLayer = L.geoJSON(geoData,{
+
+      style:f=>{
+        let nome=f.properties.name;
+
+        let mostrar =
+          (raio[nome] && chkImplantadas.checked) ||
+          (futuras.includes(nome) && chkFuturas.checked) ||
+          (!raio[nome] && !futuras.includes(nome) && chkSemBase.checked);
+
+        if(!mostrar) return {opacity:0,fillOpacity:0};
+
+        return {
+          color:"#111",
+          weight:1, // Default weight for boundaries (normal view)
+          fillColor:getCor(nome),
+          fillOpacity:0.9
+        };
+      },
+
+      onEachFeature:(f,layer)=>{
+        let nome = f.properties.name;
+        layerMap[nome] = layer; // registra para busca
+
+        // TOOLTIP
+        let info;
+        if (nome === 'Fortaleza') {
+          var mRaio = raio['Messejana'];
+          var fOrg  = orgInfo['Fortaleza'];
+          var mOrg  = orgInfo['Messejana'];
+          info = `<b>Fortaleza</b><br>
+            🔵 <b>Sede</b> · ${fOrg.cia}/${fOrg.bat} · Ord. ${raio['Fortaleza'].ord} · ${raio['Fortaleza'].data}<br>
+            🟣 <b>Messejana</b> · ${mOrg.pel}/${mOrg.cia}/${mOrg.bat} · Ord. ${mRaio ? mRaio.ord : '—'} · ${mRaio ? mRaio.data : '—'}`;
+        } else if (raio[nome]) {
+          var org = getOrgStr(nome);
+          info = `<b>${nome}</b><br>${org ? org + '<br>' : ''}<b>BASE ATIVA</b><br>Ordem: ${raio[nome].ord}<br>Data: ${raio[nome].data}`;
+        } else if (futuras.includes(nome)) {
+          info = `<b>${nome}</b><br><b>BASE FUTURA</b>`;
+        } else {
+          info = `<b>${nome}</b><br>Sem base`;
+        }
+        layer.bindTooltip(info, {sticky:true});
+
+        // --- HOVER EFFECT ---
+        if (nome === 'Fortaleza') {
+          // Hover especial: divide Fortaleza em Sede (norte) e Messejana (sul)
+          layer.on("mouseover", function(e) {
+            if (!fortalezaHalves || splitOverlay) return;
+            e.target.setStyle({opacity:0, fillOpacity:0}); // esconde original
+
+            var sedeP = L.polygon(fortalezaHalves.north, {
+              interactive:false, color:'#FFD700', weight:2.5,
+              fillColor:'#005eff', fillOpacity:0.92
+            });
+            var messP = L.polygon(fortalezaHalves.south, {
+              interactive:false, color:'#FFD700', weight:2.5,
+              fillColor:'#7c3aed', fillOpacity:0.92
+            });
+            var sedeLabel = L.marker(halfCentroid(fortalezaHalves.north), {
+              interactive:false,
+              icon:L.divIcon({className:'label-split', html:'🔵 Sede'})
+            });
+            var messLabel = L.marker(halfCentroid(fortalezaHalves.south), {
+              interactive:false,
+              icon:L.divIcon({className:'label-split', html:'🟣 Messejana'})
+            });
+            splitOverlay = L.layerGroup([sedeP, messP, sedeLabel, messLabel]).addTo(map);
+          });
+          layer.on("mouseout", function(e) {
+            geojsonLayer.resetStyle(e.target);
+            if (splitOverlay) { map.removeLayer(splitOverlay); splitOverlay = null; }
+          });
+        } else {
+          layer.on("mouseover", function(e) {
+            e.target.setStyle({weight:3, color:'#FFD700', fillOpacity:0.95});
+          });
+          layer.on("mouseout", function(e) {
+            geojsonLayer.resetStyle(e.target);
+          });
+        }
+        // ---------------------------------------------------
+
+        // MENU
+        layer.on("click",(e)=>{
+          let html = `
+          <div class="menu-popup">
+            <div class="popup-title">📍 ${nome}</div>
+            <div class="popup-grid">
+              <button class="btn-futura" onclick="addFutura('${nome}')">
+                <span class="ico">🔵</span>Futura
+              </button>
+              <button class="btn-impl" onclick="addImplantada('${nome}')">
+                <span class="ico">✅</span>Implantada
+              </button>
+              <button class="btn-edit" onclick="abrirModal('${nome}')">
+                <span class="ico">✏️</span>Editar
+              </button>
+              <button class="btn-limpar" onclick="limparMunicipio('${nome}')">
+                <span class="ico">🗑️</span>Limpar
+              </button>
+            </div>
+          </div>`;
+          L.popup({maxWidth:220, minWidth:180}).setLatLng(e.latlng).setContent(html).openOn(map);
+        });
+
+        // LABEL CONTROLADA
+        if(mostrarLabels){
+          let center = getCentroid(f);
+          L.marker(center,{
+            interactive:false,
+            icon:L.divIcon({className:"label",html:nome})
+          }).addTo(labelLayer);
+        }
+
+      }
+
+    }).addTo(map);
+
+    document.getElementById("painelInfo").innerHTML =
+    `Implantadas: ${Object.keys(raio).length}<br>Futuras: ${futuras.length}`;
+  }
+
+  // ===== LOAD E INICIALIZAÇÃO (NOVO) =====
+  fetch('https://raw.githubusercontent.com/tbrugz/geodata-br/master/geojson/geojs-23-mun.json')
+  .then(r=>r.json())
+  .then(data=>{
+    geoData = data;
+    var ftFeat = geoData.features.find(f => f.properties.name === 'Fortaleza');
+    if (ftFeat) fortalezaHalves = computeFortalezaHalves(ftFeat);
+
+    // Tenta carregar dados salvos na nuvem antes de renderizar
+    _carregarDadosNuvem(function(){
+      atualizarMapa();
+      initializeAllMunicipalities();
+      setupSearchInput();
+    });
+  });
+
+  // ===== INTEGRAÇÃO GOOGLE APPS SCRIPT =====
+
+  function _estaNoAppsScript() {
+    return typeof google !== 'undefined' && google.script && google.script.run;
+  }
+
+  function setSaveStatus(msg, cor) {
+    var el = document.getElementById('saveStatus');
+    el.textContent = msg;
+    el.style.color = cor || '#94a3b8';
+    el.style.display = 'block';
+  }
+
+  function _carregarDadosNuvem(callback) {
+    if (!_estaNoAppsScript()) { callback(); return; }
+    setSaveStatus('⏳ Carregando dados...', '#fbbf24');
+    google.script.run
+      .withSuccessHandler(function(json) {
+        if (json) {
+          try {
+            var saved = JSON.parse(json);
+            if (saved.raio)    raio    = saved.raio;
+            if (saved.futuras) futuras = saved.futuras;
+            if (saved.orgInfo) for (var k in saved.orgInfo) orgInfo[k] = saved.orgInfo[k];
+            if (saved.efetivo) {
+              document.getElementById('qtdPoliciais').value = saved.efetivo.policiais || 0;
+              document.getElementById('qtdMotos').value     = saved.efetivo.motos     || 0;
+              document.getElementById('qtdViaturas').value  = saved.efetivo.viaturas  || 0;
+            }
+            setSaveStatus('✅ Salvo em: ' + (saved.ultimoSalvo || '—'), '#34d399');
+          } catch(e) {}
+        } else {
+          setSaveStatus('☁️ Sem dados salvos — usando padrão', '#64748b');
+        }
+        callback();
+      })
+      .withFailureHandler(function() { callback(); })
+      .getData();
+  }
+
+  var _saveTimer = null;
+  window.salvarNuvem = function(silencioso) {
+    if (!_estaNoAppsScript()) {
+      if (!silencioso) alert('Funcionalidade disponível apenas quando hospedado no Google Apps Script.');
+      return;
+    }
+    clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(function() {
+      var btn = document.getElementById('btnCloud');
+      btn.classList.add('salvando');
+      btn.textContent = '⏳ Salvando...';
+      setSaveStatus('⏳ Salvando...', '#fbbf24');
+
+      var payload = JSON.stringify({
+        raio: raio,
+        futuras: futuras,
+        orgInfo: orgInfo,
+        efetivo: {
+          policiais: parseInt(document.getElementById('qtdPoliciais').value) || 0,
+          motos:     parseInt(document.getElementById('qtdMotos').value)     || 0,
+          viaturas:  parseInt(document.getElementById('qtdViaturas').value)  || 0
+        }
+      });
+
+      google.script.run
+        .withSuccessHandler(function(timestamp) {
+          btn.classList.remove('salvando');
+          btn.textContent = '☁️ Salvar Online';
+          setSaveStatus('✅ Salvo em: ' + (timestamp || '—'), '#34d399');
+        })
+        .withFailureHandler(function() {
+          btn.classList.remove('salvando');
+          btn.textContent = '☁️ Salvar Online';
+          setSaveStatus('❌ Erro ao salvar', '#f87171');
+        })
+        .saveData(payload);
+    }, 300);
+  };
+
+
+  function setupSearchInput() {
+      const searchInput = document.getElementById('municipioSearch');
+      const suggestionsContainer = document.getElementById('autocompleteSuggestions');
+
+      if (searchInput && suggestionsContainer) {
+          // Evento 'input' é disparado em cada tecla digitada
+          searchInput.addEventListener('input', handleAutocomplete);
+
+          // Fecha as sugestões se o usuário clicar fora do campo e container de sugestões
+          document.addEventListener('click', function(e) {
+              if (!searchInput.contains(e.target) && !suggestionsContainer.contains(e.target)) {
+                  suggestionsContainer.style.display = 'none';
+              }
+          });
+      }
+  }
+
+
+  // ===== FUNÇÕES DE GERENCIAMENTO (MANTIDAS) =====
+  window.addFutura = function(nome){
+    if(!futuras.includes(nome)) futuras.push(nome);
+    map.closePopup();
+    atualizarMapa();
+    salvarNuvem(true);
+  }
+
+  window.addImplantada = function(nome){
+    let ordem = prompt("Ordem da base:");
+    let data  = prompt("Data de inauguração:");
+    if(ordem && data){
+      raio[nome] = {ord:ordem, data:data};
+      futuras = futuras.filter(c=>c !== nome);
+    }
+    map.closePopup();
+    atualizarMapa();
+    salvarNuvem(true);
+  }
+
+  window.limparMunicipio = function(nome){
+    delete raio[nome];
+    futuras = futuras.filter(c=>c !== nome);
+    map.closePopup();
+    atualizarMapa();
+    salvarNuvem(true);
+  }
+
+  // ===== IMPRIMIR =====
+  window.imprimirMapa = function() {
+    var prevCenter = map.getCenter();
+    var prevZoom = map.getZoom();
+
+    // 1. Esconde toda a UI via JS (não depende de CSS print)
+    var uiEls = document.querySelectorAll('.header, .search-container, .filtro, .painel, .btn-print');
+    uiEls.forEach(function(el) { el.style.display = 'none'; });
+    var ctrl = document.querySelector('.leaflet-control-container');
+    if (ctrl) ctrl.style.display = 'none';
+
+    // 2. Mapa ocupa a tela inteira (Leaflet recalcula imediatamente)
+    var mapEl = document.getElementById('map');
+    var origStyle = mapEl.style.cssText;
+    mapEl.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:9999;';
+
+    map.invalidateSize({ animate: false });
+    map.fitBounds(geojsonLayer.getBounds(), { padding: [30, 30], animate: false });
+
+    function restaurar() {
+      mapEl.style.cssText = origStyle;
+      uiEls.forEach(function(el) { el.style.display = ''; });
+      if (ctrl) ctrl.style.display = '';
+      map.setView(prevCenter, prevZoom, { animate: false });
+      map.invalidateSize();
+    }
+
+    // 3. Espera tiles renderizarem, imprime, e restaura
+    setTimeout(function() {
+      window.print();
+      restaurar();
+    }, 600);
+  };
+
+  // ===== MODAL DE EDIÇÃO =====
+  var _nomeEditando = null;
+
+  window.abrirModal = function(nome) {
+    map.closePopup();
+    _nomeEditando = nome;
+
+    document.getElementById('modalNome').textContent = nome;
+
+    // Preenche campos de organograma
+    var o = orgInfo[nome] || {bat:'1ºBPRaio', cia:'1ªCia', pel:null};
+    document.getElementById('editBat').value = o.bat;
+    document.getElementById('editCia').value = o.cia;
+    document.getElementById('editPel').value = o.pel || '';
+
+    // Preenche campos da base
+    var r = raio[nome] || {ord:'', data:''};
+    document.getElementById('editOrdem').value = r.ord || '';
+    document.getElementById('editData').value  = r.data || '';
+
+    document.getElementById('modalEdicao').classList.add('ativo');
+  };
+
+  window.fecharModal = function() {
+    document.getElementById('modalEdicao').classList.remove('ativo');
+    _nomeEditando = null;
+  };
+
+  window.salvarEdicao = function() {
+    if (!_nomeEditando) return;
+    var nome = _nomeEditando;
+
+    var bat  = document.getElementById('editBat').value;
+    var cia  = document.getElementById('editCia').value;
+    var pel  = document.getElementById('editPel').value || null;
+    var ord  = document.getElementById('editOrdem').value;
+    var data = document.getElementById('editData').value.trim();
+
+    // Atualiza organograma
+    orgInfo[nome] = {bat, cia, pel};
+
+    // Atualiza dados da base (só se tiver ordem e data)
+    if (ord && data) {
+      raio[nome] = {ord, data};
+      futuras = futuras.filter(c => c !== nome);
+    }
+
+    fecharModal();
+    atualizarMapa();
+    salvarNuvem(true);
+  };
+
+  // Fecha modal ao clicar fora da caixa
+  document.getElementById('modalEdicao').addEventListener('click', function(e) {
+    if (e.target === this) fecharModal();
+  });
+
+  // ===== FILTROS =====
+  document.querySelectorAll("input").forEach(el=>{
+    el.addEventListener("change",()=>atualizarMapa());
+  });
+
+  // Auto-save do efetivo ao digitar (debounce 1,5s)
+  ['qtdPoliciais','qtdMotos','qtdViaturas'].forEach(function(id){
+    document.getElementById(id).addEventListener('input', function(){
+      clearTimeout(_saveTimer);
+      _saveTimer = setTimeout(function(){ salvarNuvem(true); }, 1500);
+    });
+  });
+
+  </script>
+
+  </body>
+  </html>
