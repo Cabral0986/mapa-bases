@@ -364,6 +364,63 @@
   .btn-cancelar { background:#374151; color:#fff; }
   .btn-cancelar:hover { background:#4b5563; }
 
+  /* ===== PAINEL MOBILE (BOTTOM SHEET) ===== */
+  #mobile-popup {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: #1e293b;
+    border-top: 1px solid #334155;
+    border-radius: 14px 14px 0 0;
+    padding: 16px 16px 24px;
+    z-index: 9000;
+    box-shadow: 0 -4px 24px rgba(0,0,0,0.6);
+  }
+  #mobile-popup.ativo { display: block; }
+  #mobile-popup-title {
+    font-size: 14px;
+    font-weight: bold;
+    color: #93c5fd;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #334155;
+  }
+  #mobile-popup .popup-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  #mobile-popup .popup-grid button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 12px 4px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    color: #fff;
+    background: #1d4ed8;
+  }
+  #mobile-popup .popup-grid button .ico { font-size: 18px; }
+  #mobile-popup .btn-fechar {
+    width: 100%;
+    padding: 10px;
+    background: #374151;
+    color: #94a3b8;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+    margin-top: 4px;
+  }
+
   @page { margin: 0; }
 
   @media print {
@@ -442,6 +499,13 @@
       <span class="label-item">🚔 Viaturas</span>
       <input class="efetivo-valor" id="qtdViaturas" type="number" min="0" value="0">
     </div>
+  </div>
+
+  <!-- Painel Mobile (Bottom Sheet) -->
+  <div id="mobile-popup">
+    <div id="mobile-popup-title"></div>
+    <div class="popup-grid" id="mobile-popup-grid"></div>
+    <button class="btn-fechar" onclick="fecharMobilePopup()">✕ Fechar</button>
   </div>
 
   <!-- Modal de Edição -->
@@ -949,10 +1013,7 @@
 
         // MENU
         layer.on("click",(e)=>{
-          let html = `
-          <div class="menu-popup">
-            <div class="popup-title">📍 ${nome}</div>
-            <div class="popup-grid">
+          let botoesHtml = `
               <button class="btn-futura" onclick="addFutura('${nome}')">
                 <span class="ico">🔵</span>Futura
               </button>
@@ -964,10 +1025,18 @@
               </button>
               <button class="btn-limpar" onclick="limparMunicipio('${nome}')">
                 <span class="ico">🗑️</span>Limpar
-              </button>
-            </div>
-          </div>`;
-          L.popup({maxWidth:220, minWidth:180}).setLatLng(e.latlng).setContent(html).openOn(map);
+              </button>`;
+
+          if (window.innerWidth <= 768) {
+            // Mobile: painel fixo na parte inferior
+            document.getElementById('mobile-popup-title').innerHTML = '📍 ' + nome;
+            document.getElementById('mobile-popup-grid').innerHTML = botoesHtml;
+            document.getElementById('mobile-popup').classList.add('ativo');
+            map.closePopup();
+          } else {
+            let html = `<div class="menu-popup"><div class="popup-title">📍 ${nome}</div><div class="popup-grid">${botoesHtml}</div></div>`;
+            L.popup({maxWidth:220, minWidth:180}).setLatLng(e.latlng).setContent(html).openOn(map);
+          }
         });
 
         // LABEL CONTROLADA
@@ -1101,10 +1170,19 @@
   }
 
 
+  // ===== PAINEL MOBILE =====
+  window.fecharMobilePopup = function() {
+    document.getElementById('mobile-popup').classList.remove('ativo');
+  };
+  // Fecha ao clicar no mapa fora de um município
+  map.on('click', function() {
+    document.getElementById('mobile-popup').classList.remove('ativo');
+  });
+
   // ===== FUNÇÕES DE GERENCIAMENTO (MANTIDAS) =====
   window.addFutura = function(nome){
     if(!futuras.includes(nome)) futuras.push(nome);
-    map.closePopup();
+    map.closePopup(); fecharMobilePopup();
     atualizarMapa();
     salvarNuvem(true);
   }
@@ -1116,7 +1194,7 @@
       raio[nome] = {ord:ordem, data:data};
       futuras = futuras.filter(c=>c !== nome);
     }
-    map.closePopup();
+    map.closePopup(); fecharMobilePopup();
     atualizarMapa();
     salvarNuvem(true);
   }
@@ -1124,7 +1202,7 @@
   window.limparMunicipio = function(nome){
     delete raio[nome];
     futuras = futuras.filter(c=>c !== nome);
-    map.closePopup();
+    map.closePopup(); fecharMobilePopup();
     atualizarMapa();
     salvarNuvem(true);
   }
@@ -1167,7 +1245,7 @@
   var _nomeEditando = null;
 
   window.abrirModal = function(nome) {
-    map.closePopup();
+    map.closePopup(); fecharMobilePopup();
     _nomeEditando = nome;
 
     document.getElementById('modalNome').textContent = nome;
